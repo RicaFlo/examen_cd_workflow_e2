@@ -1,0 +1,124 @@
+name: CD - Production Deployment
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+jobs:
+  test-and-validate:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v3
+      
+      - name: Setup Python 3.11
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.11'
+      
+      - name: Install dependencies
+        run: |
+          pip install -r requirements.txt
+      
+      - name: Run tests with pytest
+        run: |
+          python -m pytest tests/ -v --tb=short
+        env:
+          SECRET_KEY: ${{ secrets.SECRET_KEY }}
+      
+      - name: Verify tag format
+        run: |
+          echo "🔖 Tag que activó el workflow: ${{ github.ref_name }}"
+          if [[ ! "${{ github.ref_name }}" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            echo "⚠️  Advertencia: El tag no sigue formato semver estricto (vX.Y.Z)"
+            echo "📌 Tag actual: ${{ github.ref_name }}"
+          else
+            echo "✅ Tag válido: ${{ github.ref_name }}"
+          fi
+  
+  deploy-to-render:
+    needs: test-and-validate 
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v3
+      
+      - name: Log deployment info
+        run: |
+          echo "🚀 INICIANDO DEPLOYMENT A PRODUCCIÓN"
+          echo "====================================="
+          echo "📦 Tag: ${{ github.ref_name }}"
+          echo "🔗 Commit: ${{ github.sha }}"
+          echo "👤 Usuario: ${{ github.actor }}"
+          echo "📅 Fecha: $(date)"
+          echo "🌐 Repositorio: ${{ github.repository }}"
+          echo "====================================="
+      
+      - name: Create production environment summary
+        run: |
+          echo "🔧 CONFIGURACIÓN DE ENTORNO DE PRODUCCIÓN"
+          echo "========================================="
+          echo "SECRET_KEY: [configurada en GitHub Secrets]"
+          echo "FLASK_ENV: production (configurada en Render)"
+          echo "DEBUG: False (configurada en Render)"
+          echo "API_VERSION: ${{ github.ref_name }}"
+          echo "========================================="
+      
+      - name: Deploy to Render using Webhook
+        run: |
+          echo "🌐 Enviando solicitud de deploy a Render..."
+          echo "🔗 Webhook: [oculto por seguridad]"
+          
+          # Hacer la petición POST al webhook de Render
+          RESPONSE=$(curl -s -w "\n%{http_code}" -X POST "${{ secrets.RENDER_DEPLOY_HOOK }}")
+          
+          # Separar respuesta y código HTTP
+          HTTP_CODE=$(echo "$RESPONSE" | tail -n1)
+          RESPONSE_BODY=$(echo "$RESPONSE" | sed '$d')
+          
+          echo "📡 Código de respuesta HTTP: $HTTP_CODE"
+          echo "📨 Respuesta de Render: $RESPONSE_BODY"
+          
+          if [ "$HTTP_CODE" -eq 200 ] || [ "$HTTP_CODE" -eq 201 ]; then
+            echo "✅ ¡Deployment iniciado exitosamente en Render!"
+            echo "📋 Nota: El despliegue puede tardar algunos minutos en completarse."
+          else
+            echo "❌ Error al iniciar deployment. Código HTTP: $HTTP_CODE"
+            echo "💡 Posibles soluciones:"
+            echo "   1. Verifica que el RENDER_DEPLOY_HOOK sea correcto"
+            echo "   2. Verifica que el servicio exista en Render"
+            echo "   3. Revisa los logs de Render para más detalles"
+            exit 1
+          fi
+      
+      - name: Display deployment URLs and instructions
+        run: |
+          echo " "
+          echo "🎉 ¡WORKFLOW COMPLETADO EXITOSAMENTE!"
+          echo "======================================"
+          echo "📋 PASOS PARA VERIFICAR EL DEPLOYMENT:"
+          echo " "
+          echo "1. 📊 Ve al dashboard de Render:"
+          echo "   https://dashboard.render.com/"
+          echo " "
+          echo "2. 🔍 Busca tu servicio 'examen-api' y haz clic"
+          echo " "
+          echo "3. 📝 Ve a la pestaña 'Events' o 'Deploys'"
+          echo "   para ver el progreso del despliegue"
+          echo " "
+          echo "4. ⏳ Espera 2-5 minutos a que se complete el build"
+          echo " "
+          echo "5. 🌐 Accede a tu API desplegada:"
+          echo "   https://examen-api.onrender.com"
+          echo " "
+          echo "6. 🧪 Prueba los endpoints:"
+          echo "   curl https://examen-api.onrender.com/"
+          echo "   curl https://examen-api.onrender.com/health"
+          echo " "
+          echo "7. 📸 Toma captura de pantalla de:"
+          echo "   - La API respondiendo correctamente"
+          echo "   - El dashboard de Render mostrando 'Live'"
+          echo "   - Esta ejecución de GitHub Actions (éxito verde)"
+          echo "======================================"
