@@ -1,0 +1,51 @@
+name: Deploy to Production
+
+on:
+  push:
+    tags:
+      - 'v*'  # Se activa SOLO con tags como v1.0.0, v2.0.0
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    environment: production
+    
+    steps:
+    - name: Checkout repository
+      uses: actions/checkout@v4
+      
+    - name: Setup Python
+      uses: actions/setup-python@v4
+      with:
+        python-version: '3.9'
+        
+    - name: Install dependencies
+      run: |
+        python -m pip install --upgrade pip
+        pip install flask
+        pip install -r requirements.txt  # Si existe
+        
+    - name: Run tests (opcional pero recomendado)
+      run: |
+        python -m pytest tests/ -v  # Si tienes tests
+      env:
+        SECRET_KEY: ${{ secrets.SECRET_KEY }}
+        
+    - name: Deploy to Vercel
+      uses: BetaHuhn/deploy-to-vercel-action@v1
+      with:
+        github-token: ${{ secrets.GITHUB_TOKEN }}
+        vercel-token: ${{ secrets.VERCEL_TOKEN }}
+        vercel-org-id: ${{ secrets.VERCEL_ORG_ID }}
+        vercel-project-id: ${{ secrets.VERCEL_PROJECT_ID }}
+        vercel-args: '--prod'  # Deployment a producción
+        working-directory: ./
+      env:
+        VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+        VERCEL_ORG_ID: ${{ secrets.VERCEL_ORG_ID }}
+        VERCEL_PROJECT_ID: ${{ secrets.VERCEL_PROJECT_ID }}
+        
+    - name: Verify deployment
+      run: |
+        echo "✅ Deployment completado"
+        echo "URL disponible en: https://${{ secrets.VERCEL_PROJECT_NAME }}.vercel.app"
